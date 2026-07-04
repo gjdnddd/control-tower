@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>컨트롤타워</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif; background:#0f172a; color:#f1f5f9; }
+</style>
+</head>
+<body class="max-w-[480px] mx-auto min-h-screen pb-8">
+
+  <header class="sticky top-0 z-50 bg-[#1e293b] border-b border-[#334155] px-4 py-3 flex items-center justify-between">
+    <div>
+      <p class="text-[26px] font-bold text-[#c084fc]">컨트롤타워</p>
+      <p id="today-label" class="text-[15px] text-[#f1f5f9]"></p>
+    </div>
+    <button onclick="toggleSection('cfg-section','cfg-arrow')" class="text-[27px] active:opacity-70">⚙️</button>
+  </header>
+
+  <nav id="domain-nav" class="sticky top-[57px] z-40 bg-[#0f172a] border-b border-[#334155] flex px-4"></nav>
+
+  <main class="p-4 space-y-3">
+
+    <section id="domain-미장" class="hidden">
+      <div id="catalog-미장"></div>
+    </section>
+
+    <section id="domain-국장" class="hidden">
+      <div id="catalog-국장"></div>
+    </section>
+
+    <section id="domain-자산관리" class="hidden">
+      <div id="catalog-자산관리"></div>
+    </section>
+
+    <section id="domain-자기관리" class="hidden">
+
+      <nav class="flex mb-3 -mt-1">
+        <button id="tab-today-btn" onclick="switchTab('today')" class="px-3 py-2 text-[18px] border-b-2 border-blue-400 text-blue-400">오늘</button>
+        <button id="tab-week-btn" onclick="switchTab('week')" class="px-3 py-2 text-[18px] border-b-2 border-transparent text-[#f1f5f9]">최근 7일</button>
+      </nav>
+
+      <section id="view-today">
+        <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-[21px] font-bold text-[#c084fc]">오늘 체크</p>
+            <p id="progress-label" class="text-[17px] text-[#f1f5f9]">0/12 완료</p>
+          </div>
+          <div class="h-2 bg-[#0f172a] rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-2 bg-emerald-500 rounded-full transition-all duration-150" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="axis-cards" class="space-y-3 mt-3"></div>
+
+        <div class="bg-[#1e293b] rounded-xl border border-[#334155] mt-3 overflow-hidden">
+          <button onclick="toggleSection('cfg-section','cfg-arrow')" class="w-full px-4 py-2 text-[18px] text-[#c084fc] flex items-center justify-between active:opacity-70">
+            <span>설정 (Gist 연동)</span><span id="cfg-arrow">▼</span>
+          </button>
+          <div id="cfg-section" class="hidden bg-[#0a1120] p-3 space-y-2 border-t border-[#334155]">
+            <p class="text-[15px] text-[#f1f5f9]">항목 이름·목표는 각 항목 옆 ✏️에서 바로 수정합니다. 여기는 Gist 동기화 설정만 있습니다.</p>
+            <label class="text-[15px] text-[#f1f5f9]">Gist ID</label>
+            <input id="gist-id-input" type="text" placeholder="control_tower_habits.json이 든 Gist ID"
+              class="w-full mt-1 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-[18px] text-[#f1f5f9]">
+            <label class="text-[15px] text-[#f1f5f9] mt-2 block">GitHub Token</label>
+            <input id="gist-token-input" type="password" placeholder="ghp_... 또는 github_pat_..."
+              class="w-full mt-1 bg-[#1e293b] border border-[#334155] rounded-lg px-2 py-1.5 text-[18px] text-[#f1f5f9]">
+            <button onclick="saveGistConfig()" class="w-full bg-blue-600 text-white text-[18px] py-2 rounded-lg font-medium active:opacity-70 mt-2">Gist 설정 저장 + 불러오기</button>
+            <p id="gist-status" class="text-[15px] mt-1"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-week" class="hidden space-y-3">
+        <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3">
+          <p class="text-[21px] font-bold mb-2 text-[#c084fc]">수면 · 기상시간 추이</p>
+          <div id="sleep-chart"></div>
+        </div>
+        <div id="week-tables" class="space-y-3"></div>
+      </section>
+
+    </section>
+
+  </main>
+
+<script>
+  // ── 항목 정의 ──────────────────────────────
+  const AXES = [
+    { key: 'health', label: '건강',     items: ['sleep', 'exercise', 'diet'] },
+    { key: 'time',    label: '시간관리', items: ['dawn', 'core', 'lunch'] },
+    { key: 'mental',  label: '멘탈',     items: ['mental_1', 'mental_2', 'mental_3'] },
+    { key: 'focus',   label: '집중업무', items: ['focus_1', 'focus_2', 'focus_3'] }
+  ];
+  const ITEM_TYPE = { sleep: 'time' }; // 나머지는 기본 bool
+  const DEFAULT_CONFIG = {
+    sleep:    { label: '수면',     goal: '' },
+    exercise: { label: '운동',     goal: '스트레칭 5분, 플랭크 10초' },
+    diet:     { label: '식단',     goal: '' },
+    dawn:     { label: '새벽시간', goal: '' },
+    core:     { label: '코어시간', goal: '평일 퇴근 후 / 주말 3시간' },
+    lunch:    { label: '점심시간', goal: '' },
+    mental_1: { label: '멘탈1',   goal: '' },
+    mental_2: { label: '멘탈2',   goal: '' },
+    mental_3: { label: '멘탈3',   goal: '' },
+    focus_1:  { label: '집중1',   goal: '' },
+    focus_2:  { label: '집중2',   goal: '' },
+    focus_3:  { label: '집중3',   goal: '' }
+  };
+  const ALL_ITEM_KEYS = AXES.flatMap(a => a.items);
+  const GIST_FILENAME = 'control_tower_habits.json';
+  const CATALOG_GIST_FILENAME = 'control_tower_catalog.json';
+
+  // ══════════════════════════════════════════════════════
+  // ▼▼▼ 카탈로그 데이터 시작 — 프로그램 추가/수정은 이 블록만 편집 ▼▼▼
+  // 각 항목: key(고유 식별자, 바꾸지 말 것) / name / desc / access / usage / caution / status / link(공개 URL 있으면)
+  // ══════════════════════════════════════════════════════
+  const DOMAINS = ['미장', '국장', '자산관리', '자기관리'];
+  const CATALOG = {
+    미장: [
+      {
+        key: 'vr',
+        name: 'VR',
+        desc: 'TQQQ 기반 VR(Value Rebalancing) 전략의 2주 사이클별 매수/매도 계산 및 포트폴리오 관리',
+        access: 'GitHub Pages 자동 배포',
+        usage: '초기 1회 V1·보유주식수·Pool·G값 입력 → 이후 현재가 자동/수동 조회, 2주 사이클 자동 계산·롤오버(V2→V1), Gist로 기기간 동기화',
+        caution: '일일 평가금 자동 채움(Phase 6) 기능은 수동 저장 테스트가 아직 검증 목록에 남아있음 — 그 외 핵심 기능은 안정적으로 운영 중',
+        status: '운영중',
+        link: 'https://gjdnddd.github.io/VR_dashboard/'
+      },
+      {
+        key: 'auto_mumae',
+        name: '자동무매',
+        desc: 'SOXL 무한매수법 자동매매 — 한국투자증권 OpenAPI 연동, GCP VM에서 실거래',
+        access: 'GCP VM SSH (gjdnddd@34.122.119.222) 또는 텔레그램 봇 명령어',
+        usage: '코드 수정 후 scp로 VM 배포 → systemctl restart trading-bot. 텔레그램 /force_trade, /toggle_virtual, /set_seed 등으로 제어',
+        caution: '봇 중복 실행 절대 금지(systemd가 자동 재시작하므로 수동 python bot.py 실행 금지), .env·gsheet_key.json은 VM 전용(로컬 불가)',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'manual_mumae',
+        name: '수동무매',
+        desc: '무한매수법 포트폴리오별 T값·평단가·수익 추적, 카카오톡/메리츠 체결 자동 파싱, Gist 동기화',
+        access: 'GitHub Pages',
+        usage: '포트폴리오 등록 후 자동 체결 파싱 또는 수동 입력으로 보유수량/Pool 갱신, "VR로 ↗" 버튼으로 VR 대시보드에 체결 전달',
+        caution: '메리츠 자동 감지는 60초 폴링 방식, totalSeed 초과 시 경고 표시됨',
+        status: '운영중',
+        link: 'https://gjdnddd.github.io/mmNoti/'
+      },
+      {
+        key: 'stock_alarm',
+        name: 'Stock Alarm',
+        desc: 'QQQ/SOXX 무매 기준가 대비 하락률 감시, 조건 도달 시 텔레그램 알람',
+        access: 'GitHub Pages(UI) + GCP Cloud Run Job "stock-alarm-job" (평일 16:50·07:00 KST 자동 실행)',
+        usage: '웹 UI에서 무매 기준가 수동 입력 → 이후 자동 갱신. QQQ -3%/-2%, SOXX -4%/-3% 기준 알람 발송',
+        caution: 'infi_hae(무매 기준가, 수동 리셋)와 sell_ath(신고가, 자동 갱신만) 구분 필수 — 헷갈리기 쉬움',
+        status: '운영중',
+        link: 'https://gjdnddd.github.io/stock-alarm/'
+      }
+    ],
+    국장: [
+      {
+        key: 'fornext_pipeline',
+        name: 'ForNext (파이프라인)',
+        desc: '한국 주식 단타 모멘텀 파이프라인 — 신규 기사 분석, 학습사례 저장, 패턴 공식 개발(0일차 급등 후 흐름 예측). "ForNext All" 폴더 안 ForNext 서브폴더가 이 부분이고, 텔레그램 실시간 알람은 별도인 "ForNext API" 카드 참고',
+        access: '로컬 실행 `ForNext.bat`(Flask, 포트 5100) 또는 GCP VM(/home/gjdnddd/SF-STOCK/ForNext/)',
+        usage: '기사·종목명 입력 → 파이프라인 분석(/pipeline) → 학습사례 저장(/learning-cases) → 일봉/분봉 XLS 업로드해 매수/익절 포인트 점수화',
+        caution: 'VM에서 실행되므로 로컬 수정 후 VM 동기화 필수, 두 기기 동시 저장 금지. ForNext All 밖에 있는 구 폴더 "ForNext"는 안 쓰는 폴더(혼동 주의)',
+        status: '개발중',
+        link: null
+      },
+      {
+        key: 'fornext_api',
+        name: 'ForNext API',
+        desc: '키움증권 WebSocket 실시간 감시 → 이평선구간·지지저항 근접 시 텔레그램 알림 (관찰 알림, 매매 실행 없음)',
+        access: 'GCP VM `infin-stock-bot`(e2-micro), 포트 18000은 SSH 터널로만 접근. 로컬 코드: ForNext All/ForNext API/',
+        usage: '텔레그램 명령어로 제어 — /list(감시종목), /add 종목명, /del 번호, /on·/off 번호(알림 켜기/끄기), /status. 코드 수정 후 scp로 VM 업로드 → uvicorn 재시작',
+        caution: '같은 VM에 별도 프로세스 bot_run.py(무한매수법용 다른 텔레그램 봇, 계정 gjdnddd)가 상주 — 절대 건드리지 말 것. 재시작은 지정된 kill 후 nohup 커맨드로만',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'ganghan_gisa',
+        name: '강한기사',
+        desc: '한국 주식 관련 강한 기사·연관 종목을 날짜별로 등록해 편입/편출·성과 추적',
+        access: '`start_all.bat`(또는 run_local.bat) 실행 → http://127.0.0.1:8002 자동 오픈, SQLite 로컬 저장',
+        usage: '기사·종목 텍스트 붙여넣기 → 파싱 후 편입 저장 → 가격 일괄 업데이트 → 수익률 추적 → 편출/복귀',
+        caution: 'KRX 키 설정 필요(krx_auth_key.txt), 종목코드 자동매칭 후보 선택 필요, PC별 venv 구분 필요',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'stock_history',
+        name: 'STOCK HISTORY',
+        desc: 'EVENING 파일과 이브닝테마정리를 바탕으로 종목 히스토리·시황을 기록·갱신',
+        access: '로컬 실행 `종목히스토리_실행.bat`',
+        usage: '실행 후 EVENING 파일 업로드 → 이브닝테마정리 복사·붙여넣기 → 시황 작성 → 검증 버튼 → 샘플업데이트 버튼 → 종목히스토리 업데이트 버튼 순서로 클릭',
+        caution: '위 순서(검증 → 샘플업데이트 → 종목히스토리 업데이트)를 지켜야 함',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'cardview',
+        name: '단타카드뷰',
+        desc: '단타 매매 규칙을 카드 형식(질문/답 플립)으로 학습하는 뷰어',
+        access: '`index.html` 직접 열기 (launch.json "cardview", 포트 8753)',
+        usage: '카드 클릭해 뒷면 확인 → 카테고리 필터 → 즐겨찾기 토글. cards.json 수정 후 build_html.py로 재생성',
+        caution: '정적 HTML이라 서버 없이도 열림, 내용 갱신은 build_html.py 재실행 필요',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'invest_data_summary',
+        name: '투자데이터 종합',
+        desc: '단타 학습 자료 종합 정리 (규칙카드 E1~E21, 실전 복기, 시황·차트 해석)',
+        access: '폴더 내 마크다운 문서 직접 열람 (웹앱 아님)',
+        usage: '규칙카드 → 활용 가이드 → 월별 복기 순으로 참고',
+        caution: '문서 열람 전용, 카테고리 분류(E1~E21 + A~G 메타) 숙지 필요',
+        status: '운영중',
+        link: null
+      }
+    ],
+    자산관리: [
+      {
+        key: 'seed',
+        name: 'SEED',
+        desc: '메리츠 HTS CSV 기반 개인 자산 대시보드 — 총자산/월별손익/가계부/3대지표 통합',
+        access: '로컬 `index.html` 직접 열기 (launch.json "SEED", 포트 8001)',
+        usage: '탭별로 메리츠 CSV 업로드 → 자동 파싱 → localStorage 저장 → JSON 스냅샷으로 OneDrive 동기화, 수동계좌 내보내기/불러오기로 PC간 동기화',
+        caution: 'CSV는 EUC-KR 인코딩 필수, 미장은 연도별 파일 분리·국장은 연간 통합 파일이라 업로드 항목만 갱신됨, SGOV는 예수금 취급',
+        status: '운영중',
+        link: null
+      },
+      {
+        key: 'real_chart',
+        name: 'Real Chart',
+        desc: 'KB부동산 주간/월간 통계를 심리·매매전세지수·전망지수 3종 차트로 시각화',
+        access: '`Real_Chart.html` 직접 열기 또는 launch.json "real-chart"(포트 8003)',
+        usage: '주간/월간 엑셀 업로드 → SheetJS 파싱 → Chart.js 렌더링, 지역 드롭다운(계층형)·기간 슬라이더로 조회',
+        caution: '엑셀 헤더 열 간격이 지표마다 다름(매수우위 3열/매매지수 1열/KB 6열), 데이터 저장 기능 없어 매번 새로 업로드해야 함',
+        status: '개발중',
+        link: null
+      },
+      {
+        key: 'invest_dashboard',
+        name: 'Invest Dashboard',
+        desc: 'T사이클(TQQQ)·S사이클(SOXL)·퇴직연금·국장단타·무매·VR 등 투자전략 6종을 탭으로 통합 관리',
+        access: 'GitHub Pages 또는 로컬 index.html',
+        usage: '탭별 매매기록/예수금 입력 → Gist 자동 동기화(기기간) → "Sheets에 올리기"로 Google Sheets 스냅샷 업로드',
+        caution: '설정/인증정보는 기기별 localStorage, 운용데이터는 Gist 공용 — 둘이 섞이면 헷갈림. 가격 fetch는 CORS 프록시 3개 우선순위로 처리',
+        status: '운영중',
+        link: 'https://gjdnddd.github.io/invest-dashboard/'
+      }
+    ]
+  };
+  // ▲▲▲ 카탈로그 데이터 끝 ▲▲▲
+
+  const STATUS_STYLE = {
+    운영중: 'bg-emerald-600/20 text-emerald-400 border-emerald-500',
+    개발중: 'bg-amber-600/20 text-amber-400 border-amber-500',
+    중단됨: 'bg-[#0f172a] text-[#f1f5f9] border-[#334155] opacity-60',
+    '확인 필요': 'bg-[#0f172a] text-[#f1f5f9] border-[#334155] opacity-60'
+  };
+
+  const state = {
+    schema_version: 2,
+    config: JSON.parse(JSON.stringify(DEFAULT_CONFIG)),
+    records: {},
+    catalogOverrides: {}
+  };
+
+  function todayKey() {
+    const d = new Date();
+    const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return tz.toISOString().slice(0, 10);
+  }
+
+  function nowHM() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function last7Days() {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      days.push(tz.toISOString().slice(0, 10));
+    }
+    return days;
+  }
+
+  function cfg(key) {
+    return state.config[key] || DEFAULT_CONFIG[key];
+  }
+
+  // ── 로컬/Gist 저장 ──────────────────────────
+  function getGistConfig() {
+    return {
+      id: localStorage.getItem('ct_gist_id') || '',
+      token: localStorage.getItem('ct_gist_token') || ''
+    };
+  }
+
+  function loadLocal() {
+    const raw = localStorage.getItem('ct_local_data');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.config) state.config = Object.assign({}, DEFAULT_CONFIG, parsed.config);
+      if (parsed.records) state.records = parsed.records;
+      if (parsed.catalogOverrides) state.catalogOverrides = parsed.catalogOverrides;
+    } catch (e) {}
+  }
+
+  function saveLocal() {
+    localStorage.setItem('ct_local_data', JSON.stringify(state));
+  }
+
+  function setGistStatus(msg, isErr) {
+    const el = document.getElementById('gist-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'text-[15px] mt-1 ' + (isErr ? 'text-red-400' : 'text-emerald-400');
+  }
+
+  async function fetchFromGist() {
+    const { id, token } = getGistConfig();
+    if (!id || !token) return;
+    try {
+      const res = await fetch(`https://api.github.com/gists/${id}`, {
+        headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github.v3+json' }
+      });
+      if (res.status === 401) { setGistStatus('401 토큰 오류 · 설정 확인', true); return; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const gist = await res.json();
+      const content = gist.files?.[GIST_FILENAME]?.content;
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (parsed.config) state.config = Object.assign({}, DEFAULT_CONFIG, parsed.config);
+        if (parsed.records) state.records = parsed.records;
+      }
+      const catalogContent = gist.files?.[CATALOG_GIST_FILENAME]?.content;
+      if (catalogContent) {
+        try { state.catalogOverrides = JSON.parse(catalogContent); } catch (e) {}
+      }
+      saveLocal();
+      setGistStatus('불러오기 완료');
+      renderAll();
+    } catch (e) {
+      setGistStatus('로드 실패: ' + e.message, true);
+    }
+  }
+
+  async function saveToGist() {
+    const { id, token } = getGistConfig();
+    if (!id || !token) return;
+    try {
+      const res = await fetch(`https://api.github.com/gists/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files: {
+            [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) },
+            [CATALOG_GIST_FILENAME]: { content: JSON.stringify(state.catalogOverrides, null, 2) }
+          }
+        })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setGistStatus('저장 완료 · ' + new Date().toLocaleTimeString('ko-KR'));
+    } catch (e) {
+      setGistStatus('저장 실패: ' + e.message, true);
+    }
+  }
+
+  // ── 체크/기록 ────────────────────────────────
+  function isValidTime(v) {
+    return typeof v === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(v);
+  }
+
+  function setRecord(dateStr, key, value) {
+    if (!state.records[dateStr]) state.records[dateStr] = {};
+    state.records[dateStr][key] = value;
+    saveLocal();
+  }
+
+  function toggleCheck(key) {
+    const t = todayKey();
+    if (ITEM_TYPE[key] === 'time') {
+      const current = state.records[t]?.[key];
+      if (!isValidTime(current)) {
+        setRecord(t, key, nowHM());
+      } else {
+        const v = prompt('기상 시간 수정 (HH:MM)', current);
+        if (v === null) return;
+        const m = v.trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+        if (!m) { alert('HH:MM 형식으로 입력해주세요 (예: 07:15)'); return; }
+        setRecord(t, key, v.trim());
+      }
+    } else {
+      setRecord(t, key, !state.records[t]?.[key]);
+    }
+    renderAll();
+    saveToGist();
+  }
+
+  function editItem(key) {
+    const c = cfg(key);
+    const newLabel = prompt('항목 이름', c.label);
+    if (newLabel === null) return;
+    const newGoal = prompt('목표 (작게 쪼갠 습관을 적어두고, 정착되면 다음 목표로 바꿔주세요)', c.goal || '');
+    if (newGoal === null) return;
+    state.config[key] = { label: newLabel.trim() || c.label, goal: newGoal.trim() };
+    saveLocal();
+    renderAll();
+    saveToGist();
+  }
+
+  // ── 렌더링: 오늘 화면 ─────────────────────────
+  function renderAxisCards() {
+    const container = document.getElementById('axis-cards');
+    container.innerHTML = AXES.map(axis => {
+      const cells = axis.items.map(key => {
+        const c = cfg(key);
+        const t = todayKey();
+        const val = state.records[t]?.[key];
+        const isTime = ITEM_TYPE[key] === 'time';
+        const done = isTime ? isValidTime(val) : !!val;
+        const display = isTime ? (done ? val : '미기록') : (done ? '✅' : '⬜');
+        const cls = done
+          ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400'
+          : 'bg-[#0f172a] border-[#334155] text-[#f1f5f9]';
+        return `
+          <button data-key="${key}" onclick="toggleCheck('${key}')" class="check-cell min-h-[96px] flex flex-col items-center justify-center gap-1 rounded-lg border transition-colors duration-150 active:opacity-70 ${cls}">
+            <span class="check-icon ${isTime ? 'text-[18px] font-bold' : 'text-[27px]'}">${display}</span>
+            <span class="text-[15px]">${c.label}</span>
+          </button>`;
+      }).join('');
+      const goalRows = axis.items.map(key => {
+        const c = cfg(key);
+        return `
+          <div class="flex items-center justify-between text-[15px] text-[#f1f5f9] gap-2">
+            <span class="truncate">${c.label} 목표: ${c.goal || '(미설정)'}</span>
+            <button onclick="editItem('${key}')" class="flex-shrink-0 active:opacity-70">✏️</button>
+          </div>`;
+      }).join('');
+      return `
+        <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3">
+          <p class="text-[21px] font-bold mb-2 text-[#c084fc]">${axis.label}</p>
+          <div class="grid grid-cols-3 gap-2">${cells}</div>
+          <div class="mt-2 space-y-1 border-t border-[#334155] pt-2">${goalRows}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function renderToday() {
+    document.getElementById('today-label').textContent =
+      new Date().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' });
+
+    renderAxisCards();
+
+    const t = todayKey();
+    let done = 0;
+    ALL_ITEM_KEYS.forEach(key => {
+      const val = state.records[t]?.[key];
+      if (val) done++;
+    });
+    document.getElementById('progress-label').textContent = `${done}/${ALL_ITEM_KEYS.length} 완료`;
+    document.getElementById('progress-bar').style.width = `${(done / ALL_ITEM_KEYS.length) * 100}%`;
+  }
+
+  // ── 렌더링: 최근 7일 화면 ─────────────────────
+  function renderSleepChart(days) {
+    const W = 320, H = 100, padL = 30, padR = 10, padT = 10, padB = 20;
+    const minMin = 4 * 60, maxMin = 10 * 60;
+    const pts = days.map((dateStr, i) => {
+      const t = state.records[dateStr]?.sleep;
+      if (!t) return null;
+      const m = t.match(/^(\d{2}):(\d{2})$/);
+      if (!m) return null;
+      const val = Math.min(Math.max(parseInt(m[1]) * 60 + parseInt(m[2]), minMin), maxMin);
+      const x = padL + (i / (days.length - 1)) * (W - padL - padR);
+      const y = padT + (1 - (val - minMin) / (maxMin - minMin)) * (H - padT - padB);
+      return { x, y, label: t };
+    });
+    let path = '', started = false;
+    pts.forEach(p => {
+      if (!p) { started = false; return; }
+      path += (started ? 'L' : 'M') + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ' ';
+      started = true;
+    });
+    const circles = pts.map(p => p ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#34d399"/>` : '').join('');
+    const gridLines = [4, 5, 6, 7, 8, 9, 10].map(h => {
+      const val = h * 60;
+      const y = padT + (1 - (val - minMin) / (maxMin - minMin)) * (H - padT - padB);
+      return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#334155" stroke-width="0.5"/><text x="0" y="${(y + 3).toFixed(1)}" font-size="12" fill="#f1f5f9">${h}시</text>`;
+    }).join('');
+    if (!pts.some(p => p)) {
+      return `<p class="text-[15px] text-[#f1f5f9] text-center py-6">기록 없음</p>`;
+    }
+    return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-[100px]">${gridLines}<path d="${path.trim()}" fill="none" stroke="#34d399" stroke-width="1.5"/>${circles}</svg>`;
+  }
+
+  function renderWeekTables(days) {
+    const weekdayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const todayStr = todayKey();
+    const container = document.getElementById('week-tables');
+    container.innerHTML = AXES.map(axis => {
+      let html = `<div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3 overflow-x-auto">
+        <p class="text-[21px] font-bold mb-2 text-[#c084fc]">${axis.label}</p>
+        <table class="w-full text-[15px] text-center border-collapse">
+          <thead><tr><th class="text-left text-[#f1f5f9] font-normal pb-1"></th>`;
+      axis.items.forEach(key => {
+        html += `<th class="text-[#f1f5f9] font-normal pb-1">${cfg(key).label.slice(0, 3)}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      days.forEach(dateStr => {
+        const d = new Date(dateStr + 'T00:00:00');
+        const isToday = dateStr === todayStr;
+        const label = `${d.getMonth() + 1}/${d.getDate()}(${weekdayNames[d.getDay()]})`;
+        html += `<tr class="${isToday ? 'bg-[#25324a]' : ''}"><td class="text-left py-1 text-[#f1f5f9]">${label}</td>`;
+        axis.items.forEach(key => {
+          const val = state.records[dateStr]?.[key];
+          const isTime = ITEM_TYPE[key] === 'time';
+          html += `<td class="py-1">${isTime ? (isValidTime(val) ? val : '-') : (val ? '✅' : '⬜')}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }).join('');
+  }
+
+  function renderWeek() {
+    const days = last7Days();
+    document.getElementById('sleep-chart').innerHTML = renderSleepChart(days);
+    renderWeekTables(days);
+  }
+
+  function renderAll() {
+    renderToday();
+    renderWeek();
+  }
+
+  // ── 도메인 탭 ──────────────────────────────
+  function renderDomainNav() {
+    const nav = document.getElementById('domain-nav');
+    nav.innerHTML = DOMAINS.map(d =>
+      `<button data-domain="${d}" onclick="switchDomain('${d}')" class="px-3 py-2 text-[18px] border-b-2 border-transparent text-[#f1f5f9]">${d}</button>`
+    ).join('');
+  }
+
+  function switchDomain(domain) {
+    DOMAINS.forEach(d => {
+      document.getElementById('domain-' + d).classList.toggle('hidden', d !== domain);
+    });
+    document.querySelectorAll('#domain-nav button').forEach(btn => {
+      const active = btn.dataset.domain === domain;
+      btn.className = 'px-3 py-2 text-[18px] border-b-2 ' + (active ? 'border-blue-400 text-blue-400' : 'border-transparent text-[#f1f5f9]');
+    });
+  }
+
+  function findCatalogItem(key) {
+    for (const domain of Object.keys(CATALOG)) {
+      const item = CATALOG[domain].find(p => p.key === key);
+      if (item) return { domain, item };
+    }
+    return null;
+  }
+
+  function mergedCatalogItem(item) {
+    return Object.assign({}, item, state.catalogOverrides[item.key] || {});
+  }
+
+  function renderCatalog(domain) {
+    const container = document.getElementById('catalog-' + domain);
+    const list = CATALOG[domain] || [];
+    if (!list.length) {
+      container.innerHTML = `<p class="text-[18px] text-[#f1f5f9] text-center py-8">아직 등록된 프로그램이 없습니다.</p>`;
+      return;
+    }
+    container.innerHTML = list.map(raw => {
+      const p = mergedCatalogItem(raw);
+      const linkHtml = p.link
+        ? `<a href="${p.link}" target="_blank" rel="noopener" class="text-[15px] text-[#c084fc] underline flex-shrink-0">🔗 열기</a>`
+        : '';
+      return `
+      <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3 mb-3">
+        <div class="flex items-center justify-between mb-1 gap-2">
+          <p class="text-[21px] font-bold text-[#c084fc]">${p.name}</p>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-[15px] px-2 py-0.5 rounded-full border ${STATUS_STYLE[p.status] || ''}">${p.status}</span>
+            <button onclick="editCatalogItem('${raw.key}')" class="active:opacity-70">✏️</button>
+          </div>
+        </div>
+        ${linkHtml ? `<div class="mb-2">${linkHtml}</div>` : ''}
+        <p class="text-[18px] text-[#f1f5f9] mb-2">${p.desc}</p>
+        <div class="space-y-1 text-[15px] text-[#f1f5f9] border-t border-[#334155] pt-2">
+          <p><span class="font-bold">접속:</span> ${p.access}</p>
+          <p><span class="font-bold">사용법:</span> ${p.usage}</p>
+          <p><span class="font-bold">주의:</span> ${p.caution}</p>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function editCatalogItem(key) {
+    const found = findCatalogItem(key);
+    if (!found) return;
+    const p = mergedCatalogItem(found.item);
+
+    const name = prompt('이름', p.name);
+    if (name === null) return;
+    const desc = prompt('용도(한 줄 설명)', p.desc);
+    if (desc === null) return;
+    const access = prompt('접속경로', p.access);
+    if (access === null) return;
+    const usage = prompt('사용법', p.usage);
+    if (usage === null) return;
+    const caution = prompt('주의점', p.caution);
+    if (caution === null) return;
+    const status = prompt('상태 (운영중 / 개발중 / 중단됨 / 확인 필요)', p.status);
+    if (status === null) return;
+    const link = prompt('실행 링크 URL (없으면 빈 칸)', p.link || '');
+    if (link === null) return;
+
+    state.catalogOverrides[key] = {
+      name: name.trim() || p.name,
+      desc: desc.trim(),
+      access: access.trim(),
+      usage: usage.trim(),
+      caution: caution.trim(),
+      status: status.trim() || p.status,
+      link: link.trim() || null
+    };
+    saveLocal();
+    renderCatalog(found.domain);
+    saveToGist();
+  }
+
+  // ── 탭/아코디언 ────────────────────────────
+  function switchTab(tab) {
+    document.getElementById('view-today').classList.toggle('hidden', tab !== 'today');
+    document.getElementById('view-week').classList.toggle('hidden', tab !== 'week');
+    document.getElementById('tab-today-btn').className =
+      'px-3 py-2 text-[18px] border-b-2 ' + (tab === 'today' ? 'border-blue-400 text-blue-400' : 'border-transparent text-[#f1f5f9]');
+    document.getElementById('tab-week-btn').className =
+      'px-3 py-2 text-[18px] border-b-2 ' + (tab === 'week' ? 'border-blue-400 text-blue-400' : 'border-transparent text-[#f1f5f9]');
+    if (tab === 'week') renderWeek();
+  }
+
+  function toggleSection(id, arrowId) {
+    const el = document.getElementById(id);
+    const arrow = document.getElementById(arrowId);
+    const isHidden = el.classList.contains('hidden');
+    el.classList.toggle('hidden');
+    if (arrow) arrow.textContent = isHidden ? '▲' : '▼';
+  }
+
+  function saveGistConfig() {
+    const id = document.getElementById('gist-id-input').value.trim();
+    const token = document.getElementById('gist-token-input').value.trim();
+    if (id) localStorage.setItem('ct_gist_id', id);
+    if (token) localStorage.setItem('ct_gist_token', token);
+    setGistStatus('설정 저장 완료');
+    fetchFromGist();
+  }
+
+  // ── 초기화 ─────────────────────────────────
+  loadLocal();
+  const gcfg = getGistConfig();
+  document.getElementById('gist-id-input').value = gcfg.id;
+  renderAll();
+  if (gcfg.id && gcfg.token) fetchFromGist();
+
+  renderDomainNav();
+  DOMAINS.forEach(d => { if (CATALOG[d]) renderCatalog(d); });
+  switchDomain('자기관리');
+</script>
+</body>
+</html>
