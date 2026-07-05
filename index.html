@@ -220,6 +220,16 @@
         caution: '문서 열람 전용, 카테고리 분류(E1~E21 + A~G 메타) 숙지 필요',
         status: '운영중',
         link: null
+      },
+      {
+        key: 'indicator_api',
+        name: '지표API',
+        desc: '한국투자증권 API·FINNHUB·FRED로 코스피/코스닥 이평선·미국장·유동성 3대지표·프로그램매매 등을 수집해 텔레그램 브리핑',
+        access: '로컬 실행 `py -X utf8 main.py <명령어>` (GCP Cloud Run 자동배포는 아직 미완료)',
+        usage: '가장 편한 방법은 텔레그램 봇에 직접 명령어 보내기: /market(시장 지표), /liquidity(유동성 3대지표), /report 종목명(종목명 자동으로 코드 매칭). CLI로는 full-report(전체 지표 JSON), full-summary/full-alert(텍스트 요약), telegram-alert(텔레그램 발송), morning-briefing(아침 브리핑, 매일 7:30 자동화 예정)',
+        caution: 'GCP 배포·Cloud Scheduler 연결 전이라 자동 발송 안 됨 — 로컬에서 수동 실행 필요. API 키(FINNHUB/KIS/텔레그램)는 .env로만 관리',
+        status: '개발중',
+        link: null
       }
     ],
     자산관리: [
