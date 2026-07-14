@@ -321,31 +321,142 @@
     return Object.assign({}, item, state.catalogOverrides[item.key] || {});
   }
 
-  function renderCatalog(domain) {
-    const container = document.getElementById('catalog-' + domain);
-    const list = CATALOG[domain] || [];
-    if (!list.length) {
-      container.innerHTML = `<p class="text-[18px] text-[#f1f5f9] text-center py-8">아직 등록된 프로그램이 없습니다.</p>`;
-      return;
+  // ── 사용자 추가 프로그램 ─────────────────────
+  function getCustomList(domain) {
+    const c = state.catalogOverrides.__custom__;
+    return (c && c[domain]) || [];
+  }
+
+  function findCustomItem(key) {
+    const c = state.catalogOverrides.__custom__;
+    if (!c) return null;
+    for (const domain of Object.keys(c)) {
+      const item = (c[domain] || []).find(p => p.key === key);
+      if (item) return { domain, item };
     }
-    container.innerHTML = list.map(raw => {
-      const p = mergedCatalogItem(raw);
-      const linkHtml = p.link
-        ? `<a href="${p.link}" target="_blank" rel="noopener" class="text-[15px] text-[#c084fc] underline flex-shrink-0">🔗 열기</a>`
-        : '';
-      const memoHtml = p.memo
-        ? `<div class="mt-2 pt-2 border-t border-[#334155] text-[15px] text-amber-300"><span class="font-bold">메모:</span> ${p.memo}</div>`
-        : '';
-      return `
-      <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3 mb-3">
-        <div class="flex items-center justify-between mb-1 gap-2">
-          <p class="text-[21px] font-bold text-[#c084fc]">${p.name}</p>
-          <div class="flex items-center gap-2 flex-shrink-0">
-            <span class="text-[15px] px-2 py-0.5 rounded-full border ${STATUS_STYLE[p.status] || ''}">${p.status}</span>
-            <button onclick="editCatalogItem('${raw.key}')" class="active:opacity-70" title="전체 수정">✏️</button>
-            <button onclick="editCatalogMemo('${raw.key}')" class="active:opacity-70" title="메모">📝</button>
-          </div>
-        </div>
+    return null;
+  }
+
+  function addCatalogItem(domain) {
+    const name = prompt('이름');
+    if (!name) return;
+    const desc = prompt('용도(한 줄 설명)', '') || '';
+    const access = prompt('접속경로', '') || '';
+    const usage = prompt('사용법', '') || '';
+    const caution = prompt('주의점', '') || '';
+    const status = prompt('상태 (운영중 / 개발중 / 중단됨 / 확인 필요)', '운영중') || '운영중';
+    const link = prompt('실행 링크 URL (없으면 빈 칸)', '') || '';
+
+    const key = 'custom_' + Date.now().toString(36);
+    if (!state.catalogOverrides.__custom__) state.catalogOverrides.__custom__ = {};
+    if (!state.catalogOverrides.__custom__[domain]) state.catalogOverrides.__custom__[domain] = [];
+    state.catalogOverrides.__custom__[domain].push({
+      key, name: name.trim(), desc: desc.trim(), access: access.trim(),
+      usage: usage.trim(), caution: caution.trim(), status: status.trim(),
+      link: link.trim() || null, memo: ''
+    });
+    collapsedState[key] = false; // 방금 추가한 건 펼쳐서 바로 확인 가능하게
+    saveCollapsed();
+    saveLocal();
+    renderCatalog(domain);
+    saveToGist();
+  }
+
+  function editCustomItem(domain, key) {
+    const item = getCustomList(domain).find(p => p.key === key);
+    if (!item) return;
+
+    const name = prompt('이름', item.name);
+    if (name === null) return;
+    const desc = prompt('용도(한 줄 설명)', item.desc);
+    if (desc === null) return;
+    const access = prompt('접속경로', item.access);
+    if (access === null) return;
+    const usage = prompt('사용법', item.usage);
+    if (usage === null) return;
+    const caution = prompt('주의점', item.caution);
+    if (caution === null) return;
+    const status = prompt('상태 (운영중 / 개발중 / 중단됨 / 확인 필요)', item.status);
+    if (status === null) return;
+    const link = prompt('실행 링크 URL (없으면 빈 칸)', item.link || '');
+    if (link === null) return;
+
+    Object.assign(item, {
+      name: name.trim() || item.name,
+      desc: desc.trim(),
+      access: access.trim(),
+      usage: usage.trim(),
+      caution: caution.trim(),
+      status: status.trim() || item.status,
+      link: link.trim() || null
+    });
+    saveLocal();
+    renderCatalog(domain);
+    saveToGist();
+  }
+
+  function editCustomMemo(domain, key) {
+    const item = getCustomList(domain).find(p => p.key === key);
+    if (!item) return;
+    const memo = prompt('메모 (자유롭게 기록)', item.memo || '');
+    if (memo === null) return;
+    item.memo = memo.trim();
+    saveLocal();
+    renderCatalog(domain);
+    saveToGist();
+  }
+
+  function deleteCustomItem(domain, key) {
+    const list = state.catalogOverrides.__custom__?.[domain];
+    if (!list) return;
+    const idx = list.findIndex(p => p.key === key);
+    if (idx === -1) return;
+    if (!confirm(`"${list[idx].name}"을(를) 삭제할까요?`)) return;
+    list.splice(idx, 1);
+    delete collapsedState[key];
+    saveCollapsed();
+    saveLocal();
+    renderCatalog(domain);
+    saveToGist();
+  }
+
+  // ── 접기/펼치기 (로컬 전용, Gist 동기화 안 함) ────
+  let collapsedState = {};
+
+  function loadCollapsed() {
+    try { collapsedState = JSON.parse(localStorage.getItem('ct_collapsed') || '{}'); } catch (e) { collapsedState = {}; }
+  }
+
+  function saveCollapsed() {
+    localStorage.setItem('ct_collapsed', JSON.stringify(collapsedState));
+  }
+
+  function isCollapsed(key) {
+    return collapsedState[key] !== false; // 명시적으로 펼치지 않았으면 기본은 접힘
+  }
+
+  function toggleCardCollapse(key) {
+    collapsedState[key] = !isCollapsed(key);
+    saveCollapsed();
+    const found = findCatalogItem(key) || findCustomItem(key);
+    if (found) renderCatalog(found.domain);
+  }
+
+  // ── 카드 렌더링 ────────────────────────────
+  function cardHtml(p, key, domain, isCustom) {
+    const collapsed = isCollapsed(key);
+    const linkHtml = p.link
+      ? `<a href="${p.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[15px] text-[#c084fc] underline flex-shrink-0">🔗 열기</a>`
+      : '';
+    const memoHtml = p.memo
+      ? `<div class="mt-2 pt-2 border-t border-[#334155] text-[15px] text-amber-300"><span class="font-bold">메모:</span> ${p.memo}</div>`
+      : '';
+    const editFn = isCustom ? `editCustomItem('${domain}','${key}')` : `editCatalogItem('${key}')`;
+    const memoFn = isCustom ? `editCustomMemo('${domain}','${key}')` : `editCatalogMemo('${key}')`;
+    const deleteBtn = isCustom
+      ? `<button onclick="event.stopPropagation(); deleteCustomItem('${domain}','${key}')" class="active:opacity-70" title="삭제">🗑️</button>`
+      : '';
+    const bodyHtml = collapsed ? '' : `
         ${linkHtml ? `<div class="mb-2">${linkHtml}</div>` : ''}
         <p class="text-[18px] text-[#f1f5f9] mb-2">${p.desc}</p>
         <div class="space-y-1 text-[15px] text-[#f1f5f9] border-t border-[#334155] pt-2">
@@ -353,9 +464,32 @@
           <p><span class="font-bold">사용법:</span> ${p.usage}</p>
           <p><span class="font-bold">주의:</span> ${p.caution}</p>
         </div>
-        ${memoHtml}
+        ${memoHtml}`;
+    return `
+      <div class="bg-[#1e293b] rounded-xl border border-[#334155] p-3 mb-3">
+        <div class="flex items-center justify-between gap-2 cursor-pointer" onclick="toggleCardCollapse('${key}')">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-[15px] text-[#f1f5f9] flex-shrink-0">${collapsed ? '▶' : '▼'}</span>
+            <p class="text-[21px] font-bold text-[#c084fc] truncate">${p.name}</p>
+          </div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-[15px] px-2 py-0.5 rounded-full border ${STATUS_STYLE[p.status] || ''}">${p.status}</span>
+            <button onclick="event.stopPropagation(); ${editFn}" class="active:opacity-70" title="전체 수정">✏️</button>
+            <button onclick="event.stopPropagation(); ${memoFn}" class="active:opacity-70" title="메모">📝</button>
+            ${deleteBtn}
+          </div>
+        </div>
+        ${bodyHtml}
       </div>`;
-    }).join('');
+  }
+
+  function renderCatalog(domain) {
+    const container = document.getElementById('catalog-' + domain);
+    const builtinHtml = (CATALOG[domain] || []).map(raw => cardHtml(mergedCatalogItem(raw), raw.key, domain, false));
+    const customHtml = getCustomList(domain).map(item => cardHtml(item, item.key, domain, true));
+    const addBtnHtml = `<button onclick="addCatalogItem('${domain}')" class="w-full border border-dashed border-[#334155] text-[#f1f5f9] text-[18px] rounded-xl py-3 active:opacity-70">+ 새 프로그램 추가</button>`;
+    const cards = builtinHtml.concat(customHtml);
+    container.innerHTML = (cards.length ? cards.join('') : `<p class="text-[18px] text-[#f1f5f9] text-center py-8">아직 등록된 프로그램이 없습니다.</p>`) + addBtnHtml;
   }
 
   function renderAllCatalogs() {
@@ -432,6 +566,7 @@
 
   // ── 초기화 ─────────────────────────────────
   loadLocal();
+  loadCollapsed();
   const gcfg = getGistConfig();
   document.getElementById('gist-id-input').value = gcfg.id;
 
