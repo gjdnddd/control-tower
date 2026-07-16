@@ -395,17 +395,6 @@
     saveToGist();
   }
 
-  function editCustomMemo(domain, key) {
-    const item = getCustomList(domain).find(p => p.key === key);
-    if (!item) return;
-    const memo = prompt('메모 (자유롭게 기록)', item.memo || '');
-    if (memo === null) return;
-    item.memo = memo.trim();
-    saveLocal();
-    renderCatalog(domain);
-    saveToGist();
-  }
-
   function deleteCustomItem(domain, key) {
     const list = state.catalogOverrides.__custom__?.[domain];
     if (!list) return;
@@ -442,17 +431,56 @@
     if (found) renderCatalog(found.domain);
   }
 
+  // ── 메모 인라인 편집 ─────────────────────────
+  const memoEditingSet = new Set();
+
+  function toggleMemoEdit(key) {
+    if (memoEditingSet.has(key)) {
+      memoEditingSet.delete(key);
+    } else {
+      memoEditingSet.add(key);
+      collapsedState[key] = false; // 메모 쓰는 자리가 보여야 하니 펼침
+      saveCollapsed();
+    }
+    const found = findCatalogItem(key) || findCustomItem(key);
+    if (found) renderCatalog(found.domain);
+  }
+
+  function saveMemoEdit(domain, key, isCustom) {
+    const textarea = document.getElementById('memo-input-' + key);
+    const memo = textarea ? textarea.value.trim() : '';
+    if (isCustom) {
+      const item = getCustomList(domain).find(p => p.key === key);
+      if (item) item.memo = memo;
+    } else {
+      state.catalogOverrides[key] = Object.assign({}, state.catalogOverrides[key] || {}, { memo });
+    }
+    memoEditingSet.delete(key);
+    saveLocal();
+    renderCatalog(domain);
+    saveToGist();
+  }
+
   // ── 카드 렌더링 ────────────────────────────
   function cardHtml(p, key, domain, isCustom) {
     const collapsed = isCollapsed(key);
     const linkHtml = p.link
       ? `<a href="${p.link}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[15px] text-[#c084fc] underline flex-shrink-0">🔗 열기</a>`
       : '';
-    const memoHtml = p.memo
-      ? `<div class="mt-2 pt-2 border-t border-[#334155] text-[15px] text-amber-300"><span class="font-bold">메모:</span> ${p.memo}</div>`
-      : '';
+    const editingMemo = memoEditingSet.has(key);
+    const memoHtml = editingMemo
+      ? `<div class="mt-2 pt-2 border-t border-[#334155]" onclick="event.stopPropagation()">
+          <textarea id="memo-input-${key}" rows="4" placeholder="메모를 입력하세요"
+            class="w-full bg-[#0a1120] border border-[#334155] rounded-lg p-2 text-[15px] text-[#f1f5f9]" style="resize:vertical">${p.memo || ''}</textarea>
+          <div class="flex gap-2 mt-2">
+            <button onclick="saveMemoEdit('${domain}','${key}',${isCustom})" class="flex-1 bg-blue-600 text-white text-[15px] py-1.5 rounded-lg font-medium active:opacity-70">저장</button>
+            <button onclick="toggleMemoEdit('${key}')" class="flex-1 bg-[#334155] text-[#f1f5f9] text-[15px] py-1.5 rounded-lg active:opacity-70">취소</button>
+          </div>
+        </div>`
+      : (p.memo
+        ? `<div class="mt-2 pt-2 border-t border-[#334155] text-[15px] text-amber-300"><span class="font-bold">메모:</span> <span style="white-space:pre-wrap">${p.memo}</span></div>`
+        : '');
     const editFn = isCustom ? `editCustomItem('${domain}','${key}')` : `editCatalogItem('${key}')`;
-    const memoFn = isCustom ? `editCustomMemo('${domain}','${key}')` : `editCatalogMemo('${key}')`;
     const deleteBtn = isCustom
       ? `<button onclick="event.stopPropagation(); deleteCustomItem('${domain}','${key}')" class="active:opacity-70" title="삭제">🗑️</button>`
       : '';
@@ -475,7 +503,7 @@
           <div class="flex items-center gap-2 flex-shrink-0">
             <span class="text-[15px] px-2 py-0.5 rounded-full border ${STATUS_STYLE[p.status] || ''}">${p.status}</span>
             <button onclick="event.stopPropagation(); ${editFn}" class="active:opacity-70" title="전체 수정">✏️</button>
-            <button onclick="event.stopPropagation(); ${memoFn}" class="active:opacity-70" title="메모">📝</button>
+            <button onclick="event.stopPropagation(); toggleMemoEdit('${key}')" class="active:opacity-70" title="메모">📝</button>
             ${deleteBtn}
           </div>
         </div>
@@ -524,22 +552,6 @@
       caution: caution.trim(),
       status: status.trim() || p.status,
       link: link.trim() || null
-    });
-    saveLocal();
-    renderCatalog(found.domain);
-    saveToGist();
-  }
-
-  function editCatalogMemo(key) {
-    const found = findCatalogItem(key);
-    if (!found) return;
-    const p = mergedCatalogItem(found.item);
-
-    const memo = prompt('메모 (자유롭게 기록, 다른 항목 수정과 별개로 저장됩니다)', p.memo || '');
-    if (memo === null) return;
-
-    state.catalogOverrides[key] = Object.assign({}, state.catalogOverrides[key] || {}, {
-      memo: memo.trim()
     });
     saveLocal();
     renderCatalog(found.domain);
