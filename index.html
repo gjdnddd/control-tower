@@ -12,7 +12,10 @@
 <body class="max-w-[480px] mx-auto min-h-screen pb-8">
 
   <header class="sticky top-0 z-50 bg-[#1e293b] border-b border-[#334155] px-4 py-3 flex items-center justify-between">
-    <p class="text-[26px] font-bold text-[#c084fc]">컨트롤타워</p>
+    <div class="flex items-center gap-2">
+      <p class="text-[26px] font-bold text-[#c084fc]">컨트롤타워</p>
+      <span id="header-sync-label" class="text-[15px] text-amber-300"></span>
+    </div>
     <button onclick="toggleSection('cfg-section','cfg-arrow')" class="text-[27px] active:opacity-70">⚙️</button>
   </header>
 
@@ -244,9 +247,16 @@
 
   function setGistStatus(msg, isErr) {
     const el = document.getElementById('gist-status');
-    if (!el) return;
-    el.textContent = msg;
-    el.className = 'text-[15px] mt-1 ' + (isErr ? 'text-red-400' : 'text-emerald-400');
+    if (el) {
+      el.textContent = msg;
+      el.className = 'text-[15px] mt-1 ' + (isErr ? 'text-red-400' : 'text-emerald-400');
+    }
+    const header = document.getElementById('header-sync-label');
+    if (header) {
+      const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      header.textContent = isErr ? '✗ 실패' : ('✓ ' + time);
+      header.className = 'text-[15px] ' + (isErr ? 'text-red-400' : 'text-amber-300');
+    }
   }
 
   async function fetchFromGist() {
