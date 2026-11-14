@@ -10,3 +10,5 @@ dialog{border:1px solid #d3dfd6;border-radius:16px;padding:0;width:min(920px,cal
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
 .issue-item,.favorite-item{width:100%;text-align:left}.nav-item>span:nth-child(2){flex:1;white-space:nowrap;font-size:14px}.nav-count{flex-shrink:0}.nav-item{gap:10px}
+
+h1,h2,h3{word-break:keep-all}.hero h2{text-wrap:balance}
